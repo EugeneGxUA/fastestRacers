@@ -1,45 +1,86 @@
 package com.foxminded.fastestRacers;
 
-import java.io.BufferedReader;
-import java.io.File;
-import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Paths;
+import java.time.Duration;
+import java.time.LocalDateTime;
+import java.time.LocalTime;
+import java.time.format.DateTimeFormatter;
+import java.util.List;
+import java.util.function.Consumer;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
-import javax.sound.sampled.Line;
-
 public class FastestRacersGenerator {
-    public String getRacersList() {
-        File startFile = new File(getClass().getClassLoader().getResource("resources/start.log").getFile());
-        File endFile = new File(getClass().getClassLoader().getResource("resources/end.log").getFile());
-        File abrFile = new File(getClass().getClassLoader().getResource("resources/abbreviations.txt").getFile());
+    
+    public String generateRacersBoard(Stream<String> startLogStream, 
+            Stream<String> endLogStream, Stream<String> abbreviationsStream) {
 
-        Stream<String> streamFromStartFile;
-        Stream<String> streamFromEndFile;
-        Stream<String> streamFromAbrFile;
+        StringBuilder builder = new StringBuilder();
 
-        try {
-            streamFromStartFile = Files.lines(Paths.get(startFile.getAbsolutePath()));
-            streamFromEndFile = Files.lines(Paths.get(endFile.getAbsolutePath()));
-            streamFromAbrFile = Files.lines(Paths.get(abrFile.getAbsolutePath()));
+        generateRacers(startLogStream, endLogStream, abbreviationsStream).sorted((r1, r2) -> {
+            return r1.fastestLap.compareTo(r2.fastestLap);
+        }).forEachOrdered(new Consumer<Racer>() {
+            int index = 1;
 
-            streamFromAbrFile.forEach(line -> createRacers(line.split("_")));
-        } catch (IOException e) {
-            // TODO Auto-generated catch block
-            e.printStackTrace();
-        }
+            @Override
+            public void accept(Racer racer) {
+                builder.append(index + ". " + racer).append("\n");
+                if (index == 15) {
+                    builder.append("------------------------------------------------------------------------")
+                            .append("\n");
+                }
+                index++;
+            }
 
-        return null;
+        });
+
+        return builder.toString();
     }
 
-    private Racer createRacers(String[] arr) {
-        Racer racer = new Racer();
-        racer.setAbbreviation(arr[0]);
-        racer.setName(arr[1]);
-        racer.setCommandName(arr[2]);
+    private Stream<Racer> generateRacers(Stream<String> startLogStream, 
+            Stream<String> endLogStream, Stream<String> abbreviationsStream) {
+        
+        List<String> startLogList = startLogStream.collect(Collectors.toList());
+        List<String> endLogList = endLogStream.collect(Collectors.toList());
 
-        return racer;
+        return abbreviationsStream.map(line -> {
+            String[] arr = line.split("_");
+            return new Racer(arr[1], arr[2], calculateDuration(startLogList, endLogList, arr[0]));
+        });
+    }
+
+    private Duration calculateDuration(List<String> startFileStream, List<String> endFileStream, String abbreviation) {
+        return Duration.between(getLogDate(startFileStream, abbreviation), getLogDate(endFileStream, abbreviation));
+    }
+
+    private LocalDateTime getLogDate(List<String> list, String abbreviation) {
+        String line = list.stream().filter(l -> l.startsWith(abbreviation)).findAny().orElseThrow();
+
+        String dateAndTime = line.substring(3);
+        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd_HH:mm:ss.SSS");
+        LocalDateTime dateTime = LocalDateTime.parse(dateAndTime, formatter);
+        return dateTime;
+    }
+
+    private class Racer {
+        private String name;
+        private String commandName;
+
+        private Duration fastestLap;
+
+        public Racer(String name, String commandName, Duration fastestLap) {
+            this.name = name;
+            this.commandName = commandName;
+            this.fastestLap = fastestLap;
+        }
+
+        @Override
+        public String toString() {
+            DateTimeFormatter df = DateTimeFormatter.ofPattern("mm:ss.SSS");
+            LocalTime time = LocalTime.ofNanoOfDay(fastestLap.toNanos());
+            String timeOutput = time.format(df);
+
+            return name + " | " + commandName + " | " + timeOutput;
+        }
     }
 
 }
